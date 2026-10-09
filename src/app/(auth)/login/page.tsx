@@ -8,9 +8,9 @@ import { signInUser } from '@/lib/auth/actions';
 function LoginForm() {
   const [state, formAction, isPending] = useActionState(signInUser, null);
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get('returnTo') || '';
-  const urlError = searchParams.get('error');
-  const urlMessage = searchParams.get('message');
+  const returnTo = searchParams?.get('returnTo') || '';
+  const urlError = searchParams?.get('error') || null;
+  const urlMessage = searchParams?.get('message') || null;
 
   return (
     <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-2xl backdrop-blur-xl">
