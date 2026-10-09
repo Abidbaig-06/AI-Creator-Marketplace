@@ -4,6 +4,7 @@ import { MatchScoreBadge, EvidenceBadge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import {
   synthesizeBriefFromIdea,
+  requestAIBriefSynthesis,
   calculateDeterministicRecommendations
 } from '../../services/aiBriefAgent';
 import {
@@ -123,7 +124,7 @@ export const AIBriefBuilderPage = () => {
   // -------------------------------------------------------------
   // SECTION 1 & 6: AI Generation Trigger
   // -------------------------------------------------------------
-  const handleGenerateBrief = () => {
+  const handleGenerateBrief = async () => {
     if (!promptInput.trim()) return;
     setIsGenerating(true);
     setGenerationStep(1);
@@ -135,38 +136,37 @@ export const AIBriefBuilderPage = () => {
     setTimeout(() => setGenerationStep(3), 700);
     setTimeout(() => setGenerationStep(4), 1050);
 
-    setTimeout(() => {
-      const generated = synthesizeBriefFromIdea(promptInput, brandProfile);
-      setStructuredBrief(generated);
-      setIsGenerating(false);
-      setGenerationStep(5);
-      setIsEditing(false);
-      setShowNotificationBanner(true);
+    const generated = await requestAIBriefSynthesis(promptInput, brandProfile);
+    setStructuredBrief(generated);
+    setIsGenerating(false);
+    setGenerationStep(5);
+    setIsEditing(false);
+    setShowNotificationBanner(true);
 
-      // Auto-apply brief filters to Section 3 discovery
-      applyBriefFiltersToDiscovery(generated);
+    // Auto-apply brief filters to Section 3 discovery
+    applyBriefFiltersToDiscovery(generated);
 
-      // Persist in Brand Hub notification inbox (Section 6)
-      if (addNotification) {
-        addNotification('brand', {
-          title: 'Your AI Campaign Brief Is Ready!',
-          message: `Campaign brief "${generated.title}" generated with verified creator recommendations.`,
-          type: 'success',
-          actionUrl: 'ai-brief-builder'
-        });
-      }
-
-      addToast({
-        title: 'Campaign Brief Synthesized',
-        message: 'Structured brief validated with Zod and matched with verified AI creators.',
-        type: 'success'
+    const isLive = generated.mode === 'live_ai';
+    if (addNotification) {
+      addNotification('brand', {
+        title: isLive ? 'Live AI Campaign Brief Ready!' : 'Your Campaign Brief Is Ready!',
+        message: `Campaign brief "${generated.title}" synthesized (${isLive ? 'Live Llama 3.3 Engine' : 'Deterministic Offline Engine'}).`,
+        type: 'success',
+        actionUrl: 'ai-brief-builder'
       });
+    }
 
-      // Smooth scroll to completion notification / brief specs
-      if (briefSpecsRef.current) {
-        briefSpecsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 1400);
+    addToast({
+      title: isLive ? 'Live AI Brief Synthesized' : 'Campaign Brief Synthesized',
+      message: isLive
+        ? 'Generated via secure server-side Llama 3.3 engine.'
+        : 'Generated via deterministic offline engine with verified creator matching.',
+      type: 'success'
+    });
+
+    if (briefSpecsRef.current) {
+      briefSpecsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   // -------------------------------------------------------------
@@ -647,6 +647,19 @@ export const AIBriefBuilderPage = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span className="badge badge-indigo" style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: 700 }}>
                 Section 2 — Brand / Agency Brief
+              </span>
+              <span
+                className="badge"
+                style={{
+                  padding: '5px 10px',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  backgroundColor: structuredBrief?.mode === 'live_ai' ? '#EDE9FE' : '#F1F5F9',
+                  color: structuredBrief?.mode === 'live_ai' ? '#6D28D9' : '#475569',
+                  border: `1px solid ${structuredBrief?.mode === 'live_ai' ? '#DDD6FE' : '#CBD5E1'}`
+                }}
+              >
+                {structuredBrief?.mode === 'live_ai' ? '🤖 Live Llama 3.3 Engine' : '⚡ Deterministic Demo Engine (Offline Mode)'}
               </span>
               {briefConfirmed ? (
                 <span className="badge badge-emerald" style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: 700 }}>

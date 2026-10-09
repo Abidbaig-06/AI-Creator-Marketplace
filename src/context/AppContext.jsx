@@ -73,9 +73,10 @@ export const AppProvider = ({ children }) => {
   const [brandProfile, setBrandProfile] = useState(() => getStorageJson('cp_brand_profile_v3', INITIAL_BRAND_PROFILE));
   const [activeCreatorProfile, setActiveCreatorProfile] = useState(INITIAL_CREATORS[0]);
 
-  // Auth User from live Supabase
+  // Auth User & Profile from live Supabase
   const [authUser, setAuthUser] = useState(null);
   const [authProfile, setAuthProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Toast Notifications
   const [toasts, setToasts] = useState([]);
@@ -139,34 +140,86 @@ export const AppProvider = ({ children }) => {
   // Supabase Auth and Session Hydration
   useEffect(() => {
     const supabase = getSupabaseClient();
-    if (!supabase) return;
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
 
     let isMounted = true;
 
     async function hydrateUser() {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser();
-        if (error || !user) return;
-        if (!isMounted) return;
+        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !user) {
+          if (isMounted) {
+            setAuthUser(null);
+            setAuthProfile(null);
+            setAuthLoading(false);
+          }
+          return;
+        }
 
+        if (!isMounted) return;
         setAuthUser(user);
 
-        // Fetch User Profile
-        const { data: profile } = await supabase
+        // Fetch user profile from PostgreSQL
+        let { data: profile, error: profileErr } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
+
+        // If user is authenticated but profile row is missing (e.g. freshly confirmed email), initialize safely
+        if (!profile && user) {
+          const userRole = (user.user_metadata?.role) || 'creator';
+          const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+
+          const { data: newProfile, error: createProfileErr } = await supabase
+            .from('profiles')
+            .insert({
+              id: user.id,
+              email: user.email,
+              display_name: displayName,
+              role: userRole === 'admin' ? 'creator' : userRole
+            })
+            .select()
+            .maybeSingle();
+
+          if (createProfileErr) {
+            console.warn('Profile initialization notice:', createProfileErr.message);
+          } else {
+            profile = newProfile;
+            if (userRole === 'creator') {
+              const handle = (user.email?.split('@')[0] || 'creator').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+              await supabase.from('creator_profiles').insert({
+                profile_id: user.id,
+                handle: `${handle}_${user.id.slice(0, 4)}`,
+                specialization: user.user_metadata?.specialization || 'AI Visual Production',
+                availability: 'available',
+                is_verified: false
+              });
+            } else if (userRole === 'brand') {
+              await supabase.from('brand_profiles').insert({
+                profile_id: user.id,
+                company_name: user.user_metadata?.company_name || displayName,
+                billing_email: user.email,
+                is_verified: false
+              });
+            }
+          }
+        }
 
         if (profile && isMounted) {
           setAuthProfile(profile);
+          // Strictly bind current role to stored profile role
+          setCurrentRole(profile.role);
 
           if (profile.role === 'brand') {
             const { data: bProfile } = await supabase
               .from('brand_profiles')
               .select('*')
               .eq('profile_id', user.id)
-              .single();
+              .maybeSingle();
 
             if (bProfile && isMounted) {
               setBrandProfile((prev) => ({
@@ -178,7 +231,7 @@ export const AppProvider = ({ children }) => {
                 companySize: bProfile.company_size || prev.companySize
               }));
 
-              // Fetch existing briefs for this brand
+              // Fetch existing briefs belonging to this brand
               const { data: userBriefs } = await supabase
                 .from('briefs')
                 .select('*')
@@ -212,7 +265,7 @@ export const AppProvider = ({ children }) => {
               .from('creator_profiles')
               .select('*, portfolio_projects(*)')
               .eq('profile_id', user.id)
-              .single();
+              .maybeSingle();
 
             if (cProfile && isMounted) {
               setActiveCreatorProfile((prev) => ({
@@ -241,7 +294,9 @@ export const AppProvider = ({ children }) => {
           }
         }
       } catch (err) {
-        console.warn('Error hydrating Supabase session in UI:', err);
+        console.warn('Session hydration notice:', err);
+      } finally {
+        if (isMounted) setAuthLoading(false);
       }
     }
 
@@ -261,7 +316,7 @@ export const AppProvider = ({ children }) => {
     };
   }, []);
 
-  // Navigation Helper
+  // Navigation Helper with Role Protection
   const navigateTo = (page, options = {}) => {
     if (options.creatorId) setSelectedCreatorId(options.creatorId);
     if (options.campaignId) setSelectedCampaignId(options.campaignId);
@@ -282,6 +337,28 @@ export const AppProvider = ({ children }) => {
       'creator-notifications', 'creator-settings', 'public-profile-preview'
     ];
 
+    // Enforce role isolation for authenticated users
+    if (authProfile) {
+      if (authProfile.role === 'creator' && brandPages.includes(page)) {
+        addToast({
+          title: 'Access Restricted',
+          message: 'Creator accounts cannot access Brand Workspace pages.',
+          type: 'danger'
+        });
+        setCurrentPage('creator-dashboard');
+        return;
+      }
+      if (authProfile.role === 'brand' && creatorPages.includes(page)) {
+        addToast({
+          title: 'Access Restricted',
+          message: 'Brand accounts cannot access Creator Studio pages.',
+          type: 'danger'
+        });
+        setCurrentPage('brand-dashboard');
+        return;
+      }
+    }
+
     if (publicPages.includes(page)) {
       setCurrentRole('public');
     } else if (brandPages.includes(page)) {
@@ -296,8 +373,17 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Switch Role
+  // Switch Role with Security Isolation
   const switchRole = (newRole) => {
+    if (authProfile && newRole !== 'public' && newRole !== authProfile.role) {
+      addToast({
+        title: 'Access Restricted',
+        message: `Your account is registered as a ${authProfile.role}. You cannot switch to ${newRole} workspace.`,
+        type: 'danger'
+      });
+      return;
+    }
+
     setCurrentRole(newRole);
     if (newRole === 'public') {
       setCurrentPage('landing');
@@ -308,7 +394,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Sign out / Logout
+  // Sign out / Logout (Clears all private user state)
   const logout = async () => {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -316,11 +402,18 @@ export const AppProvider = ({ children }) => {
     }
     setAuthUser(null);
     setAuthProfile(null);
+
+    // Clear local storage session tokens
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('cp_role_v3');
+      localStorage.removeItem('cp_page_v3');
+    }
+
     setCurrentRole('public');
     setCurrentPage('landing');
     addToast({
       title: 'Signed Out',
-      message: 'You have been safely signed out.',
+      message: 'You have been safely signed out. Private session cleared.',
       type: 'info'
     });
   };
@@ -356,14 +449,90 @@ export const AppProvider = ({ children }) => {
     });
   };
 
-  // Campaign Actions (with Supabase briefs table sync)
+  // Campaign Actions (with Confirmed Supabase briefs table persistence)
   const addCampaign = async (newCampaign) => {
     const isDraft = newCampaign.status === 'Draft';
+    const supabase = getSupabaseClient();
+
+    // 1. Authenticated Flow: Require Confirmed Database Insertion
+    if (supabase && authUser) {
+      try {
+        const { data: bProfile, error: bProfileErr } = await supabase
+          .from('brand_profiles')
+          .select('id')
+          .eq('profile_id', authUser.id)
+          .maybeSingle();
+
+        if (bProfileErr || !bProfile) {
+          addToast({
+            title: 'Brand Profile Required',
+            message: 'An active brand profile is required to publish briefs.',
+            type: 'danger'
+          });
+          return null;
+        }
+
+        const { data: savedBrief, error: insertErr } = await supabase
+          .from('briefs')
+          .insert({
+            brand_profile_id: bProfile.id,
+            title: newCampaign.title,
+            description: newCampaign.description || newCampaign.overview || newCampaign.title,
+            content_type: newCampaign.contentType || 'image',
+            budget: Number(newCampaign.budget) || null,
+            deadline: newCampaign.deadline
+              ? new Date(newCampaign.deadline).toISOString()
+              : new Date(Date.now() + 14 * 86400000).toISOString(),
+            status: isDraft ? 'draft' : 'published'
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          addToast({
+            title: 'Failed to Save Campaign',
+            message: insertErr.message,
+            type: 'danger'
+          });
+          return null;
+        }
+
+        const camp = {
+          ...newCampaign,
+          id: savedBrief.id,
+          brandId: bProfile.id,
+          brandName: brandProfile.name,
+          brandLogo: brandProfile.logo,
+          status: isDraft ? 'Draft' : 'Active',
+          createdAt: new Date().toISOString().split('T')[0],
+          applicantsCount: 0,
+          matchesCount: 8,
+          topMatches: []
+        };
+        setCampaigns((prev) => [camp, ...prev]);
+
+        addToast({
+          title: isDraft ? 'Draft Brief Saved' : 'Campaign Published Successfully!',
+          message: `"${camp.title}" persisted to PostgreSQL database.`,
+          type: isDraft ? 'info' : 'success'
+        });
+        return savedBrief.id;
+      } catch (err) {
+        addToast({
+          title: 'Database Error',
+          message: 'Unable to reach the database server.',
+          type: 'danger'
+        });
+        return null;
+      }
+    }
+
+    // 2. Unauthenticated Demo Fallback: Explicitly Marked as Demo
     const campId = `camp-${Date.now()}`;
     const camp = {
       ...newCampaign,
       id: campId,
-      brandId: 'brand-1',
+      brandId: 'brand-demo',
       brandName: brandProfile.name,
       brandLogo: brandProfile.logo,
       status: newCampaign.status || 'Active',
@@ -377,43 +546,10 @@ export const AppProvider = ({ children }) => {
     };
     setCampaigns((prev) => [camp, ...prev]);
 
-    // Backend sync if user is logged into Supabase
-    const supabase = getSupabaseClient();
-    if (supabase && authUser) {
-      try {
-        const { data: bProfile } = await supabase
-          .from('brand_profiles')
-          .select('id')
-          .eq('profile_id', authUser.id)
-          .single();
-
-        if (bProfile) {
-          const { error } = await supabase.from('briefs').insert({
-            brand_profile_id: bProfile.id,
-            title: newCampaign.title,
-            description: newCampaign.description || newCampaign.overview || newCampaign.title,
-            content_type: newCampaign.contentType || 'image',
-            budget: Number(newCampaign.budget) || null,
-            deadline: newCampaign.deadline
-              ? new Date(newCampaign.deadline).toISOString()
-              : new Date(Date.now() + 14 * 86400000).toISOString(),
-            status: isDraft ? 'draft' : 'published'
-          });
-          if (error) {
-            console.warn('Supabase brief sync warning:', error.message);
-          }
-        }
-      } catch (err) {
-        console.warn('Backend brief sync notice:', err);
-      }
-    }
-
     addToast({
-      title: isDraft ? 'Draft Brief Saved' : 'Campaign Published Successfully!',
-      message: isDraft
-        ? `"${camp.title}" has been saved to your draft briefs.`
-        : `"${camp.title}" is now live and accepting creator applications.`,
-      type: isDraft ? 'info' : 'success'
+      title: isDraft ? 'Draft Saved (Demo Mode)' : 'Campaign Published (Demo Mode)',
+      message: `"${camp.title}" saved locally. Sign in to persist to live database.`,
+      type: 'info'
     });
     return camp.id;
   };
@@ -492,15 +628,96 @@ export const AppProvider = ({ children }) => {
     });
   };
 
-  // Creator Proposal Submission (with Supabase proposals table sync)
+  // Creator Proposal Submission (with Confirmed Database Insertion)
   const submitProposal = async ({ campaignId, pitch, proposedBudget, timeline, portfolioItems, message }) => {
     const campaign = campaigns.find((c) => c.id === campaignId);
+    const supabase = getSupabaseClient();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(campaignId);
+
+    // 1. Authenticated Flow with Valid Brief ID
+    if (supabase && authUser && isUuid) {
+      try {
+        const { data: cProfile, error: cErr } = await supabase
+          .from('creator_profiles')
+          .select('id')
+          .eq('profile_id', authUser.id)
+          .maybeSingle();
+
+        if (cErr || !cProfile) {
+          addToast({
+            title: 'Creator Profile Required',
+            message: 'You need an active creator profile to submit proposals.',
+            type: 'danger'
+          });
+          return;
+        }
+
+        const { data: savedProposal, error: propErr } = await supabase
+          .from('proposals')
+          .insert({
+            brief_id: campaignId,
+            creator_profile_id: cProfile.id,
+            pitch: pitch || message || 'Deliverables with verified AI generation provenance',
+            proposed_budget: Number(proposedBudget) || 1000,
+            estimated_delivery_days: 7,
+            status: 'submitted'
+          })
+          .select()
+          .single();
+
+        if (propErr) {
+          addToast({
+            title: 'Proposal Submission Failed',
+            message: propErr.message,
+            type: 'danger'
+          });
+          return;
+        }
+
+        const newReq = {
+          id: savedProposal.id,
+          campaignId,
+          campaignTitle: campaign ? campaign.title : 'Custom Campaign',
+          brandName: campaign ? campaign.brandName : 'Brand Client',
+          brandLogo: campaign ? campaign.brandLogo : INITIAL_BRAND_PROFILE.logo,
+          creatorId: cProfile.id,
+          creatorName: activeCreatorProfile.name,
+          creatorAvatar: activeCreatorProfile.avatar,
+          type: 'Creator Proposal',
+          status: 'Sent',
+          budget: Number(proposedBudget) || 3500,
+          counterBudget: null,
+          deliverables: pitch || 'Custom AI visual deliverables with source files',
+          deadline: timeline || '2 Weeks',
+          sentDate: new Date().toISOString().split('T')[0],
+          message: message || pitch,
+          projectId: null
+        };
+        setCollaborationRequests((prev) => [newReq, ...prev]);
+
+        addToast({
+          title: 'Proposal Submitted Successfully!',
+          message: `Your proposal for "${newReq.campaignTitle}" persisted to database.`,
+          type: 'success'
+        });
+        return;
+      } catch (err) {
+        addToast({
+          title: 'Submission Error',
+          message: 'Unable to communicate with proposal backend.',
+          type: 'danger'
+        });
+        return;
+      }
+    }
+
+    // 2. Demo Brief / Unauthenticated Flow
     const newReq = {
       id: `req-${Date.now()}`,
       campaignId: campaign ? campaign.id : 'camp-1',
       campaignTitle: campaign ? campaign.title : 'Custom Campaign',
       brandName: campaign ? campaign.brandName : 'Brand Client',
-      brandLogo: campaign ? campaign.brandLogo : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&q=80',
+      brandLogo: campaign ? campaign.brandLogo : INITIAL_BRAND_PROFILE.logo,
       creatorId: activeCreatorProfile.id,
       creatorName: activeCreatorProfile.name,
       creatorAvatar: activeCreatorProfile.avatar,
@@ -514,39 +731,12 @@ export const AppProvider = ({ children }) => {
       message: message || pitch,
       projectId: null
     };
-
     setCollaborationRequests((prev) => [newReq, ...prev]);
 
-    // Backend sync if user is logged in
-    const supabase = getSupabaseClient();
-    if (supabase && authUser) {
-      try {
-        const { data: cProfile } = await supabase
-          .from('creator_profiles')
-          .select('id')
-          .eq('profile_id', authUser.id)
-          .single();
-
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(campaignId);
-        if (cProfile && isUuid) {
-          await supabase.from('proposals').insert({
-            brief_id: campaignId,
-            creator_profile_id: cProfile.id,
-            pitch: pitch || message || 'Deliverables with verified AI generation provenance',
-            proposed_budget: Number(proposedBudget) || 1000,
-            estimated_delivery_days: 7,
-            status: 'submitted'
-          });
-        }
-      } catch (err) {
-        console.warn('Backend proposal sync notice:', err);
-      }
-    }
-
     addToast({
-      title: 'Proposal Submitted Successfully!',
-      message: `Your proposal for "${newReq.campaignTitle}" has been delivered to the brand.`,
-      type: 'success'
+      title: 'Proposal Recorded (Demo Mode)',
+      message: `Your proposal for "${newReq.campaignTitle}" recorded in local preview.`,
+      type: 'info'
     });
   };
 
@@ -818,8 +1008,88 @@ export const AppProvider = ({ children }) => {
     });
   };
 
-  // Portfolio Actions (with Supabase portfolio_projects table sync)
+  // Portfolio Actions (with Confirmed Database Insertion)
   const addPortfolioItem = async (newItem) => {
+    const supabase = getSupabaseClient();
+
+    // 1. Authenticated Flow
+    if (supabase && authUser) {
+      try {
+        const { data: cProfile, error: cErr } = await supabase
+          .from('creator_profiles')
+          .select('id')
+          .eq('profile_id', authUser.id)
+          .maybeSingle();
+
+        if (cErr || !cProfile) {
+          addToast({
+            title: 'Creator Profile Required',
+            message: 'You need an active creator profile to add portfolio pieces.',
+            type: 'danger'
+          });
+          return;
+        }
+
+        const slug = (newItem.title || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+        const { data: savedProject, error: insertErr } = await supabase
+          .from('portfolio_projects')
+          .insert({
+            creator_profile_id: cProfile.id,
+            title: newItem.title || 'Untitled Project',
+            slug,
+            description: newItem.description || null,
+            content_type: newItem.category || 'image',
+            workflow_description: newItem.workflow || null,
+            models_used: Array.isArray(newItem.tools) ? newItem.tools : [],
+            is_public: true
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          addToast({
+            title: 'Failed to Add Portfolio Project',
+            message: insertErr.message,
+            type: 'danger'
+          });
+          return;
+        }
+
+        const item = {
+          ...newItem,
+          id: savedProject.id
+        };
+
+        setActiveCreatorProfile((prev) => ({
+          ...prev,
+          portfolio: [item, ...prev.portfolio]
+        }));
+
+        setCreators((prev) =>
+          prev.map((c) =>
+            c.id === activeCreatorProfile.id
+              ? { ...c, portfolio: [item, ...c.portfolio] }
+              : c
+          )
+        );
+
+        addToast({
+          title: 'Portfolio Project Added',
+          message: `"${item.title}" saved and live on your public creator profile.`,
+          type: 'success'
+        });
+        return;
+      } catch (err) {
+        addToast({
+          title: 'Database Error',
+          message: 'Unable to communicate with portfolio database.',
+          type: 'danger'
+        });
+        return;
+      }
+    }
+
+    // 2. Demo Mode Fallback
     const item = {
       ...newItem,
       id: `port-${Date.now()}`
@@ -838,37 +1108,10 @@ export const AppProvider = ({ children }) => {
       )
     );
 
-    const supabase = getSupabaseClient();
-    if (supabase && authUser) {
-      try {
-        const { data: cProfile } = await supabase
-          .from('creator_profiles')
-          .select('id')
-          .eq('profile_id', authUser.id)
-          .single();
-
-        if (cProfile) {
-          const slug = (newItem.title || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
-          await supabase.from('portfolio_projects').insert({
-            creator_profile_id: cProfile.id,
-            title: newItem.title || 'Untitled Project',
-            slug,
-            description: newItem.description || null,
-            content_type: newItem.category || 'image',
-            workflow_description: newItem.workflow || null,
-            models_used: Array.isArray(newItem.tools) ? newItem.tools : [],
-            is_public: true
-          });
-        }
-      } catch (err) {
-        console.warn('Backend portfolio sync notice:', err);
-      }
-    }
-
     addToast({
-      title: 'Portfolio Project Added',
-      message: `"${item.title}" is now showcased on your public creator profile.`,
-      type: 'success'
+      title: 'Portfolio Item Added (Demo Mode)',
+      message: `"${item.title}" added to local preview. Sign in to save to live portfolio.`,
+      type: 'info'
     });
   };
 
@@ -893,14 +1136,13 @@ export const AppProvider = ({ children }) => {
     });
   };
 
-  // Profile Updates (with Supabase sync)
+  // Profile Updates (with Strict Database Row Confirmation)
   const updateBrandProfile = async (fields) => {
-    setBrandProfile((prev) => ({ ...prev, ...fields }));
-
     const supabase = getSupabaseClient();
+
     if (supabase && authUser) {
       try {
-        await supabase
+        const { data, error } = await supabase
           .from('brand_profiles')
           .update({
             company_name: fields.name || fields.company,
@@ -908,29 +1150,58 @@ export const AppProvider = ({ children }) => {
             industry: fields.industry,
             company_size: fields.companySize
           })
-          .eq('profile_id', authUser.id);
+          .eq('profile_id', authUser.id)
+          .select();
+
+        if (error) {
+          addToast({
+            title: 'Failed to Save Brand Profile',
+            message: error.message,
+            type: 'danger'
+          });
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          addToast({
+            title: 'Update Ineffective',
+            message: 'No matching brand profile row found for this account.',
+            type: 'danger'
+          });
+          return;
+        }
+
+        setBrandProfile((prev) => ({ ...prev, ...fields }));
+        addToast({
+          title: 'Brand Profile Updated',
+          message: 'Company profile and preferences successfully saved to database.',
+          type: 'success'
+        });
+        return;
       } catch (err) {
-        console.warn('Backend brand profile update notice:', err);
+        addToast({
+          title: 'Database Error',
+          message: 'Could not connect to update brand profile.',
+          type: 'danger'
+        });
+        return;
       }
     }
 
+    setBrandProfile((prev) => ({ ...prev, ...fields }));
     addToast({
-      title: 'Brand Profile Updated',
-      message: 'Company profile and preferences successfully saved.',
-      type: 'success'
+      title: 'Brand Profile Updated (Demo Mode)',
+      message: 'Company profile saved in local memory.',
+      type: 'info'
     });
   };
 
   const updateCreatorProfile = async (fields) => {
-    setActiveCreatorProfile((prev) => ({ ...prev, ...fields }));
-    setCreators((prev) =>
-      prev.map((c) => (c.id === activeCreatorProfile.id ? { ...c, ...fields } : c))
-    );
-
     const supabase = getSupabaseClient();
+
     if (supabase && authUser) {
       try {
-        await supabase
+        const { data, error } = await supabase
           .from('creator_profiles')
           .update({
             tagline: fields.tagline,
@@ -938,16 +1209,55 @@ export const AppProvider = ({ children }) => {
             specialization: fields.primarySpecialization || fields.specialization,
             hourly_rate: fields.hourlyRate ? parseFloat(String(fields.hourlyRate).replace(/[^0-9.]/g, '')) : undefined
           })
-          .eq('profile_id', authUser.id);
+          .eq('profile_id', authUser.id)
+          .select();
+
+        if (error) {
+          addToast({
+            title: 'Failed to Save Creator Profile',
+            message: error.message,
+            type: 'danger'
+          });
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          addToast({
+            title: 'Update Ineffective',
+            message: 'No matching creator profile row found for this account.',
+            type: 'danger'
+          });
+          return;
+        }
+
+        setActiveCreatorProfile((prev) => ({ ...prev, ...fields }));
+        setCreators((prev) =>
+          prev.map((c) => (c.id === activeCreatorProfile.id ? { ...c, ...fields } : c))
+        );
+        addToast({
+          title: 'Creator Profile Updated',
+          message: 'Your profile changes were persisted to PostgreSQL.',
+          type: 'success'
+        });
+        return;
       } catch (err) {
-        console.warn('Backend creator profile update notice:', err);
+        addToast({
+          title: 'Database Error',
+          message: 'Could not connect to update creator profile.',
+          type: 'danger'
+        });
+        return;
       }
     }
 
+    setActiveCreatorProfile((prev) => ({ ...prev, ...fields }));
+    setCreators((prev) =>
+      prev.map((c) => (c.id === activeCreatorProfile.id ? { ...c, ...fields } : c))
+    );
     addToast({
-      title: 'Creator Profile Updated',
-      message: 'Your profile changes are now active.',
-      type: 'success'
+      title: 'Creator Profile Updated (Demo Mode)',
+      message: 'Your profile changes saved in local memory.',
+      type: 'info'
     });
   };
 
@@ -972,7 +1282,6 @@ export const AppProvider = ({ children }) => {
     }));
   };
 
-  // Provide alias for backward-compatibility with WorkspaceTopbar
   const markNotificationAsRead = markNotificationRead;
 
   const markAllNotificationsRead = (role) => {
@@ -1016,6 +1325,7 @@ export const AppProvider = ({ children }) => {
         activeCreatorProfile,
         authUser,
         authProfile,
+        authLoading,
         logout,
         toasts,
         addToast,

@@ -83,12 +83,11 @@ export const AuthPage = ({ defaultTab = 'signin', defaultRole = 'brand' }) => {
         type: 'success'
       });
     } catch (err) {
-      // Fallback for offline demo mode
-      switchRole(selectedRole);
+      setFormErrors({ email: err?.message || 'Authentication service error. Please try again.' });
       addToast({
-        title: 'Signed In (Local Session)',
-        message: `Welcome back to ${selectedRole === 'brand' ? 'Brand Workspace' : 'Creator Workspace'}.`,
-        type: 'info'
+        title: 'Sign In Failed',
+        message: err?.message || 'Could not connect to authentication service.',
+        type: 'danger'
       });
     } finally {
       setIsLoading(false);
@@ -144,12 +143,11 @@ export const AuthPage = ({ defaultTab = 'signin', defaultRole = 'brand' }) => {
         }
       }
     } catch (err) {
-      // Fallback for offline demo mode
-      switchRole(selectedRole);
+      setFormErrors({ email: err?.message || 'Registration service error. Please try again.' });
       addToast({
-        title: 'Account Created (Local)',
-        message: `Welcome to CreatorProof AI as a ${selectedRole === 'brand' ? 'Brand / Agency' : 'AI Creator'}.`,
-        type: 'info'
+        title: 'Sign Up Failed',
+        message: err?.message || 'Could not connect to registration service.',
+        type: 'danger'
       });
     } finally {
       setIsLoading(false);

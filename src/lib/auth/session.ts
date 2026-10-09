@@ -81,8 +81,8 @@ export async function ensureUserProfile(
       .upsert({
         id: user.id,
         email,
-        full_name: fullName,
-        role,
+        display_name: fullName,
+        role: role === 'admin' ? 'creator' : role,
       })
       .select()
       .maybeSingle();
@@ -99,16 +99,19 @@ export async function ensureUserProfile(
       await (supabase.from('creator_profiles') as any).upsert({
         profile_id: user.id,
         handle: `${handle}_${user.id.slice(0, 4)}`,
+        specialization: user.user_metadata?.specialization || 'AI Visual Production',
+        availability: 'available',
         is_verified: false,
         verification_status: 'unverified',
-        availability_status: 'available',
       });
     } else if (role === 'brand') {
+      const companyName = user.user_metadata?.company_name || fullName;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase.from('brand_profiles') as any).upsert({
         profile_id: user.id,
-        company_name: fullName,
+        company_name: companyName,
         billing_email: email,
+        is_verified: false,
       });
     }
 

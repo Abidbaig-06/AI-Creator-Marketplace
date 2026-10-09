@@ -109,12 +109,43 @@ export const CampaignBriefSchema = z.object({
 // ==========================================
 
 export const LLAMA_CONFIG = {
-  provider: 'Meta Llama via OpenRouter / Groq / OpenAI Compatible',
+  provider: 'Meta Llama 3.3 via Server-Side Proxy (/api/ai/brief)',
   recommendedModel: 'meta-llama/Llama-3.3-70B-Instruct',
   fastModel: 'meta-llama/Llama-3.1-8B-Instruct',
-  apiUrl: (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_LLAMA_API_URL) || 'https://openrouter.ai/api/v1/chat/completions',
-  apiKey: (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_LLAMA_API_KEY) || ''
+  serverEndpoint: '/api/ai/brief'
 };
+
+/**
+ * Dispatches AI brief synthesis request to server endpoint with safe offline fallback.
+ */
+export async function requestAIBriefSynthesis(ceoIdea, brandProfile = {}) {
+  try {
+    const res = await fetch('/api/ai/brief', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idea: ceoIdea, brandProfile })
+    });
+    if (res.ok) {
+      const result = await res.json();
+      if (result.success && result.live && result.data) {
+        return {
+          ...synthesizeBriefFromIdea(ceoIdea, brandProfile),
+          ...result.data,
+          mode: 'live_ai'
+        };
+      }
+    }
+  } catch (err) {
+    // Graceful offline fallback
+    console.info('Server AI generation unconfigured or offline, falling back to deterministic demo engine');
+  }
+
+  const offlineResult = synthesizeBriefFromIdea(ceoIdea, brandProfile);
+  return {
+    ...offlineResult,
+    mode: 'deterministic_demo'
+  };
+}
 
 // ==========================================
 // 3. NATURAL LANGUAGE PROMPT ANALYZER (ZERO-LATENCY DETERMINISTIC ENGINE)
