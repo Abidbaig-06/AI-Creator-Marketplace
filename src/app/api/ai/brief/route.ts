@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/session';
+import { GoogleGenAI } from '@google/genai';
 
 export async function GET() {
-  const isConfigured = Boolean(process.env.LLAMA_API_KEY || process.env.OPENROUTER_API_KEY);
+  const isConfigured = Boolean(
+    process.env.GEMINI_API_KEY || process.env.LLAMA_API_KEY || process.env.OPENROUTER_API_KEY
+  );
   return NextResponse.json({
     status: 'ok',
     live_ai_configured: isConfigured,
-    model: 'meta-llama/Llama-3.3-70B-Instruct',
+    model: process.env.GEMINI_API_KEY ? 'gemini-2.5-flash' : 'meta-llama/Llama-3.3-70B-Instruct',
   });
 }
 
@@ -38,7 +41,36 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Read credential strictly from server-only environment variables
+    // 3. Priority 1: Google Gemini API via official @google/genai SDK
+    if (process.env.GEMINI_API_KEY) {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const geminiResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Create a comprehensive AI production campaign brief for the following idea: "${idea}"`,
+        config: {
+          systemInstruction:
+            'You are CreatorProof AI Brief Builder. Output a valid JSON campaign brief with the following fields: title (string), campaignObjectives (string), targetAudience (string), creativeConcept (string), suggestedTools (array of strings, e.g. Midjourney, ComfyUI, Runway, ElevenLabs), and deliverables (array of strings). Do not invent unconfirmed budgets.',
+          responseMimeType: 'application/json',
+        },
+      });
+
+      const responseText = geminiResponse.text || '';
+      let parsedData = null;
+      try {
+        parsedData = JSON.parse(responseText);
+      } catch {
+        parsedData = { creativeConcept: responseText };
+      }
+
+      return NextResponse.json({
+        success: true,
+        live: true,
+        provider: 'google-gemini',
+        data: parsedData,
+      });
+    }
+
+    // 4. Priority 2: OpenRouter / Llama fallback
     const apiKey = process.env.LLAMA_API_KEY || process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       return NextResponse.json({
@@ -50,7 +82,7 @@ export async function POST(request: Request) {
 
     const apiUrl = process.env.LLAMA_API_URL || 'https://openrouter.ai/api/v1/chat/completions';
 
-    // 4. Secure external provider call with timeout
+    // 5. Secure external provider call with timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 12000);
 
