@@ -39,12 +39,12 @@ export const BrandDashboardPage = () => {
     setSelectedProjectId
   } = useApp();
 
-  const activeCampaigns = campaigns.filter((c) => c.status === 'Active');
-  const activeProjects = projects.filter((p) => p.status === 'In Progress' || p.status === 'Submitted' || p.status === 'Revision Requested');
-  const pendingRequests = collaborationRequests.filter((r) => r.status === 'Sent' || r.status === 'Counteroffer' || r.status === 'Incoming');
+  const activeCampaigns = (campaigns || []).filter((c) => c.status === 'Active');
+  const activeProjects = (projects || []).filter((p) => p.status === 'In Progress' || p.status === 'Submitted' || p.status === 'Revision Requested');
+  const pendingRequests = (collaborationRequests || []).filter((r) => r.status === 'Sent' || r.status === 'Counteroffer' || r.status === 'Incoming');
 
   // Explainable AI Recommended Creators
-  const recommendedCreators = creators.slice(0, 3);
+  const recommendedCreators = (creators || []).slice(0, 3);
 
   // Recent Activity Feed
   const recentActivities = [
@@ -85,7 +85,7 @@ export const BrandDashboardPage = () => {
               <span>Enterprise Brand Workspace</span>
             </div>
             <h1 style={{ fontSize: '1.95rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.025em' }}>
-              Welcome back, {brandProfile.name || 'Aura Luxe Jewels'}
+              Welcome back, {brandProfile?.name || 'Aura Luxe Jewels'}
             </h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '3px' }}>
               Manage generative AI creator pipelines, review verified node workflows, and audit milestone escrow releases.
@@ -411,7 +411,7 @@ export const BrandDashboardPage = () => {
               </tr>
             </thead>
             <tbody>
-              {campaigns.slice(0, 3).map((camp) => (
+              {(campaigns || []).slice(0, 3).map((camp) => (
                 <tr key={camp.id}>
                   <td>
                     <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{camp.title}</div>

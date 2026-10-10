@@ -251,7 +251,7 @@ export const CreatorSidebar = () => {
       }}>
         {/* Switch Role Button */}
         <button
-          onClick={() => switchRole('brand')}
+          onClick={() => switchRole('brand', true)}
           style={{
             display: 'flex',
             alignItems: 'center',

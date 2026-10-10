@@ -71,7 +71,7 @@ export const Navbar = () => {
           </div>
         </div>
 
-        {/* Center Navigation Links: Explore */}
+        {/* Center Navigation Links: Explore & Demo */}
         <nav style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <button
             onClick={() => navigateTo('directory')}
@@ -87,6 +87,23 @@ export const Navbar = () => {
             }}
           >
             Explore Creators
+          </button>
+
+          <button
+            onClick={() => switchRole('brand', true)}
+            className="btn btn-outline btn-sm"
+            style={{
+              padding: '5px 12px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              color: 'var(--primary)',
+              borderColor: '#C7D2FE',
+              backgroundColor: '#EEF2FF',
+              gap: '6px'
+            }}
+          >
+            <Building2 size={13} />
+            <span>Brand Demo</span>
           </button>
         </nav>
 

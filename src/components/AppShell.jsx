@@ -243,6 +243,16 @@ class ErrorBoundary extends React.Component {
 }
 
 export function App() {
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <ErrorBoundary>
       <AppProvider>

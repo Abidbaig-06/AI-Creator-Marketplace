@@ -83,7 +83,7 @@ export const AppProvider = ({ children }) => {
 
   // Toast Dispatcher
   const addToast = useCallback(({ title, message, type = 'success' }) => {
-    const id = Date.now().toString();
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     setToasts((prev) => [...prev, { id, title, message, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -337,28 +337,6 @@ export const AppProvider = ({ children }) => {
       'creator-notifications', 'creator-settings', 'public-profile-preview'
     ];
 
-    // Enforce role isolation for authenticated users
-    if (authProfile) {
-      if (authProfile.role === 'creator' && brandPages.includes(page)) {
-        addToast({
-          title: 'Access Restricted',
-          message: 'Creator accounts cannot access Brand Workspace pages.',
-          type: 'danger'
-        });
-        setCurrentPage('creator-dashboard');
-        return;
-      }
-      if (authProfile.role === 'brand' && creatorPages.includes(page)) {
-        addToast({
-          title: 'Access Restricted',
-          message: 'Brand accounts cannot access Creator Studio pages.',
-          type: 'danger'
-        });
-        setCurrentPage('brand-dashboard');
-        return;
-      }
-    }
-
     if (publicPages.includes(page)) {
       setCurrentRole('public');
     } else if (brandPages.includes(page)) {
@@ -373,17 +351,8 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Switch Role with Security Isolation
+  // Switch Role with Instant Demo & Prototype Switching
   const switchRole = (newRole) => {
-    if (authProfile && newRole !== 'public' && newRole !== authProfile.role) {
-      addToast({
-        title: 'Access Restricted',
-        message: `Your account is registered as a ${authProfile.role}. You cannot switch to ${newRole} workspace.`,
-        type: 'danger'
-      });
-      return;
-    }
-
     setCurrentRole(newRole);
     if (newRole === 'public') {
       setCurrentPage('landing');

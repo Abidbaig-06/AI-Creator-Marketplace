@@ -63,13 +63,13 @@ export const RoleSwitchBanner = () => {
           </button>
           <button
             className={`role-pill ${currentRole === 'brand' ? 'active' : ''}`}
-            onClick={() => switchRole('brand')}
+            onClick={() => switchRole('brand', true)}
           >
             Brand Workspace
           </button>
           <button
             className={`role-pill ${currentRole === 'creator' ? 'active' : ''}`}
-            onClick={() => switchRole('creator')}
+            onClick={() => switchRole('creator', true)}
           >
             AI Creator Workspace
           </button>

@@ -19,7 +19,7 @@ export const ToastContainer = () => {
       maxWidth: '380px',
       width: '100%'
     }}>
-      {toasts.map((toast) => {
+      {toasts.map((toast, index) => {
         let icon = <CheckCircle2 size={20} color="var(--electric-teal)" />;
         let borderLeft = '4px solid var(--electric-teal)';
         
@@ -33,7 +33,7 @@ export const ToastContainer = () => {
 
         return (
           <div
-            key={toast.id}
+            key={`${toast.id || 'toast'}-${index}`}
             style={{
               background: 'var(--ink-black)',
               color: 'var(--white)',

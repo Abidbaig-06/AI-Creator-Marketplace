@@ -592,23 +592,53 @@ export const MyCreatorProfilePage = () => {
       {/* ------------------------------------------------------------------ */}
       {/* 3. PROFILE HERO CUSTOMIZER & COVER BANNER */}
       {/* ------------------------------------------------------------------ */}
-      <div className="card" style={{ padding: '0', overflow: 'hidden', borderRadius: '24px', marginBottom: '28px', border: '1.5px solid #E4E4E7' }}>
-        <div style={{ height: '220px', backgroundImage: `url(${formData.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
-          <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(9, 9, 11, 0.78)', backdropFilter: 'blur(8px)', padding: '6px 14px', borderRadius: '9999px' }}>
-            <span style={{ color: '#A1A1AA', fontSize: '0.74rem', fontWeight: 700 }}>Cover Presets:</span>
+      <div className="card" style={{ padding: '0', overflow: 'hidden', borderRadius: '24px', marginBottom: '28px', border: '1.5px solid #E4E4E7', backgroundColor: '#FFFFFF', boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05)' }}>
+        {/* Cover Photo Banner */}
+        <div style={{
+          height: '240px',
+          backgroundImage: `url(${formData.coverImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          position: 'relative'
+        }}>
+          {/* Subtle bottom gradient overlay for smooth contrast */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.35) 100%)'
+          }} />
+
+          {/* Cover Preset Switcher */}
+          <div style={{
+            position: 'absolute',
+            top: '16px',
+            right: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(10px)',
+            padding: '6px 14px',
+            borderRadius: '9999px',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            zIndex: 2
+          }}>
+            <span style={{ color: '#E2E8F0', fontSize: '0.74rem', fontWeight: 700 }}>Cover Presets:</span>
             {coverPresets.map((p, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => setFormData({ ...formData, coverImage: p.url })}
                 style={{
-                  background: 'transparent',
+                  background: formData.coverImage === p.url ? 'rgba(255, 255, 255, 0.2)' : 'transparent',
                   border: 'none',
-                  color: formData.coverImage === p.url ? '#FFFFFF' : '#A1A1AA',
+                  color: formData.coverImage === p.url ? '#FFFFFF' : '#CBD5E1',
                   fontSize: '0.74rem',
                   fontWeight: formData.coverImage === p.url ? 800 : 500,
                   cursor: 'pointer',
-                  textDecoration: formData.coverImage === p.url ? 'underline' : 'none'
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  transition: 'all 0.15s ease'
                 }}
               >
                 {p.name}
@@ -617,34 +647,96 @@ export const MyCreatorProfilePage = () => {
           </div>
         </div>
 
-        {/* Profile Avatar & Primary Meta Row */}
-        <div style={{ padding: '0 32px 28px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '20px', marginTop: '-46px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '18px', flexWrap: 'wrap' }}>
-              <img
-                src={formData.avatar}
-                alt={formData.name}
-                style={{ width: '96px', height: '96px', borderRadius: '50%', objectFit: 'cover', border: '4px solid #FFFFFF', boxShadow: '0 4px 14px rgba(0,0,0,0.1)' }}
-              />
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#09090B', margin: 0 }}>{formData.name}</h2>
-                  <span style={{ fontSize: '0.86rem', color: '#71717A', fontWeight: 600 }}>{formData.handle}</span>
+        {/* Profile Avatar & Primary Meta Content */}
+        <div style={{ padding: '0 36px 32px', position: 'relative' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+            gap: '24px'
+          }}>
+            {/* Left: Avatar overlapping banner + Creator Identity */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '22px', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', marginTop: '-55px', zIndex: 3 }}>
+                <img
+                  src={formData.avatar}
+                  alt={formData.name}
+                  style={{
+                    width: '110px',
+                    height: '110px',
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '4px solid #FFFFFF',
+                    backgroundColor: '#FFFFFF',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.18), 0 4px 10px -2px rgba(0,0,0,0.08)'
+                  }}
+                />
+              </div>
+
+              <div style={{ paddingTop: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <h2 style={{ fontSize: '1.65rem', fontWeight: 900, color: '#09090B', margin: 0, letterSpacing: '-0.02em' }}>
+                    {formData.name}
+                  </h2>
+                  <span style={{ fontSize: '0.88rem', color: '#71717A', fontWeight: 600 }}>
+                    {formData.handle}
+                  </span>
                 </div>
-                <div style={{ fontSize: '0.9rem', color: '#7C3AED', fontWeight: 750, marginTop: '2px' }}>
+                <div style={{ fontSize: '0.96rem', color: '#7C3AED', fontWeight: 750, marginTop: '4px' }}>
                   {formData.specialization}
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '8px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)', textAlign: 'right' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Starting Rate</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#09090B' }}>${formData.startingPrice}</div>
+            {/* Right: Clean Starting Rate & Availability KPI Cards */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingTop: '14px', flexWrap: 'wrap' }}>
+              <div style={{
+                backgroundColor: '#F8FAFC',
+                padding: '10px 18px',
+                borderRadius: '14px',
+                border: '1px solid #E2E8F0',
+                textAlign: 'right',
+                minWidth: '130px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+              }}>
+                <div style={{ fontSize: '0.7rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 750, letterSpacing: '0.04em' }}>
+                  Starting Rate
+                </div>
+                <div style={{ fontSize: '1.28rem', fontWeight: 900, color: '#0F172A', marginTop: '2px' }}>
+                  ${formData.startingPrice}
+                </div>
               </div>
-              <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '8px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Availability</div>
-                <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#059669' }}>{formData.availability}</div>
+
+              <div style={{
+                backgroundColor: '#F0FDF4',
+                padding: '10px 18px',
+                borderRadius: '14px',
+                border: '1px solid #BBF7D0',
+                minWidth: '150px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+              }}>
+                <div style={{ fontSize: '0.7rem', color: '#166534', textTransform: 'uppercase', fontWeight: 750, letterSpacing: '0.04em' }}>
+                  Availability
+                </div>
+                <div style={{
+                  fontSize: '0.92rem',
+                  fontWeight: 800,
+                  color: '#15803D',
+                  marginTop: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#22C55E',
+                    display: 'inline-block'
+                  }} />
+                  {formData.availability}
+                </div>
               </div>
             </div>
           </div>

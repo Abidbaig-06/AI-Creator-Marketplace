@@ -179,19 +179,21 @@ export const AuthPage = ({ defaultTab = 'signin', defaultRole = 'brand' }) => {
 
   // Quick 1-Click Demo Logins for Hackathon Judges
   const loginAsJewelleryBrand = () => {
-    switchRole('brand');
+    switchRole('brand', true);
+    navigateTo('brand-dashboard');
     addToast({
-      title: 'Demo Session Active',
-      message: 'Logged in as Aura Luxe Jewels / Acme Brand Workspace',
+      title: 'Brand Demo Active',
+      message: 'Entered Aura Luxe Jewels / Acme Brand Workspace.',
       type: 'success'
     });
   };
 
   const loginAsSophiaCreator = () => {
-    switchRole('creator');
+    switchRole('creator', true);
+    navigateTo('creator-dashboard');
     addToast({
-      title: 'Demo Session Active',
-      message: 'Logged in as Sophia Chan (Verified AI Luxury Specialist)',
+      title: 'Creator Demo Active',
+      message: 'Entered Sophia Chan AI Creator Workspace.',
       type: 'success'
     });
   };
